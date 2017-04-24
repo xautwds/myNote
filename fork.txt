@@ -1,0 +1,15 @@
+2.6.11
+clone fork vfork底层调用都为do_fork() ，根据clone_flag标志的不同，确定上层调用的是哪个拷贝函数，通过copy_process()拷贝了task_struct,返回新的
+tast_struct地址，判断子进程需要跟踪？然后调用wake_up_new_task把进程加入队列，队列头为vfork(不共享内存，防止不必要的页面复制) ，队列尾为fork(共享内存)
+
+copy_process -->security_task_create进行安全检查，再调用dup_task_struct为子进程获取进程描述符(并且开辟空间)，判断拥有者进程数(p->user->processes)是否
+大于定值(atomic_read 原子操作) ，检查系统进程数，初始化各种值，拷贝父进程数据结构到子进程中，再copy_thread拷贝寄存器值，但是eax寄存器值更改等等
+之后调用sched_fork()完成进程调度结构，设置thread_info结构preempt_count设置为1，禁止抢占,初始化CPU，进程链入进程链表
+
+dup_task_struct()中先调用了alloc_task_struct() ，分配tast_struct，再调用alloc_thread_info(task),存放thread_info结构和内核栈，将父进程信息拷贝给子进程，
+设置新进程的状态(处于活动状态)。
+
+alloc_task_struct()底层调用了kmem_cache_alloc()，先从本地高速缓存中寻找是否有空闲对象，通过array_cache数组看看是否有空闲对象的地址
+，若没有对象cache_alloc_refill()填充高速缓存，将slab对象地址插入本地高速缓存中
+
+wake_up_new_struct()先判断是否属于同一个CPU，如果执行exec系列函数，提高优先级加入活跃队列中，否则就正常加入队列，如果在不同CPU中，加入到运行队列的尾部。
